@@ -1,0 +1,446 @@
+// PARxCON Ops - Production Prisma Schema for PostgreSQL
+// Fully self-hostable, relational, with UUIDs, audit fields, and strict relations
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  EMPLOYEE
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL
+  NEGOTIATION
+  WON
+  LOST
+  ON_HOLD
+}
+
+enum LeadSource {
+  LINKEDIN
+  WEBSITE
+  REFERRAL
+  GOOGLE
+  INDIAMART
+  COLD_OUTREACH
+  EMAIL
+  WHATSAPP
+  EXISTING_CLIENT
+  OTHER
+}
+
+enum DealStage {
+  DISCOVERY
+  REQUIREMENT
+  PROPOSAL
+  NEGOTIATION
+  VERBAL_CONFIRMATION
+  WON
+  LOST
+}
+
+enum ClientStatus {
+  PROSPECT
+  ACTIVE
+  INACTIVE
+  FORMER_CLIENT
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  BANK_TRANSFER
+  UPI
+  STRIPE
+  CASH
+  CHEQUE
+  OTHER
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum FollowupType {
+  CALL
+  EMAIL
+  WHATSAPP
+  MEETING
+  LINKEDIN
+  PROPOSAL_FOLLOWUP
+  PAYMENT_FOLLOWUP
+  OTHER
+}
+
+enum FollowupStatus {
+  SCHEDULED
+  COMPLETED
+  RESCHEDULED
+  CANCELLED
+}
+
+enum AccountCategory {
+  HOSTING
+  DOMAIN
+  EMAIL
+  CLOUD
+  SOCIAL_MEDIA
+  ADVERTISING
+  ANALYTICS
+  CRM
+  PAYMENT_GATEWAY
+  DEVELOPER_TOOL
+  CLIENT_ACCOUNT
+  OTHER
+}
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  passwordHash String
+  name         String
+  role         Role          @default(EMPLOYEE)
+  phone        String?
+  avatar       String?
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  assignedLeads     Lead[]      @relation("AssignedLeads")
+  assignedDeals     Deal[]      @relation("AssignedDeals")
+  assignedTasks     Task[]      @relation("AssignedTasks")
+  assignedFollowups Followup[]  @relation("AssignedFollowups")
+  activityLogs      ActivityLog[]
+  aiConversations   AiConversation[]
+
+  @@map("users")
+}
+
+model Client {
+  id           String        @id @default(uuid())
+  companyName  String
+  contactPerson String
+  email        String
+  phone        String?
+  country      String        @default("India")
+  city         String?
+  industry     String?
+  website      String?
+  status       ClientStatus  @default(PROSPECT)
+  clientSince  DateTime      @default(now())
+  notes        String?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  leads           Lead[]
+  deals           Deal[]
+  projects        Project[]
+  tasks           Task[]
+  followups       Followup[]
+  invoices        Invoice[]
+  payments        Payment[]
+  accountRegistry AccountRegistry[]
+
+  @@map("clients")
+}
+
+model Lead {
+  id           String      @id @default(uuid())
+  companyName  String
+  contactName  String
+  phone        String?
+  email        String?
+  country      String      @default("India")
+  city         String?
+  industry     String?
+  website      String?
+  leadSource   LeadSource  @default(WEBSITE)
+  status       LeadStatus  @default(NEW)
+  estimatedValue Float?    @default(0)
+  currency     String      @default("INR")
+  notes        String?
+  assignedToId String?
+  assignedTo   User?       @relation("AssignedLeads", fields: [assignedToId], references: [id])
+  clientId     String?
+  client       Client?     @relation(fields: [clientId], references: [id])
+  deals        Deal[]
+  followups    Followup[]
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  createdBy    String?
+  updatedBy    String?
+
+  @@map("leads")
+}
+
+model Deal {
+  id                  String       @id @default(uuid())
+  dealName            String
+  service             String
+  description         String?
+  dealValue           Float
+  currency            String       @default("INR")
+  probability         Int          @default(50) // percentage 0-100
+  stage               DealStage    @default(DISCOVERY)
+  proposalDate        DateTime?
+  expectedClosingDate DateTime?
+  actualClosingDate   DateTime?
+  notes               String?
+  clientId            String
+  client              Client       @relation(fields: [clientId], references: [id])
+  leadId              String?
+  lead                Lead?        @relation(fields: [leadId], references: [id])
+  assignedToId        String?
+  assignedTo          User?        @relation("AssignedDeals", fields: [assignedToId], references: [id])
+  nextFollowup        DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+  createdBy           String?
+  updatedBy           String?
+
+  invoices  Invoice[]
+  payments  Payment[]
+  tasks     Task[]
+  followups Followup[]
+
+  @@map("deals")
+}
+
+model Project {
+  id          String    @id @default(uuid())
+  projectName String
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id])
+  status      String    @default("In Progress") // Planning, In Progress, On Hold, Completed
+  budget      Float?
+  currency    String    @default("INR")
+  startDate   DateTime  @default(now())
+  endDate     DateTime?
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tasks Task[]
+
+  @@map("projects")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  invoiceNumber String        @unique
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id])
+  dealId        String?
+  deal          Deal?         @relation(fields: [dealId], references: [id])
+  invoiceAmount Float
+  currency      String        @default("INR")
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  status        PaymentStatus @default(PENDING)
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  payments Payment[]
+
+  @@map("invoices")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id])
+  dealId        String?
+  deal          Deal?         @relation(fields: [dealId], references: [id])
+  invoiceId     String?
+  invoice       Invoice?      @relation(fields: [invoiceId], references: [id])
+  amount        Float
+  currency      String        @default("INR")
+  paymentDate   DateTime      @default(now())
+  paymentMethod PaymentMethod @default(BANK_TRANSFER)
+  referenceNo   String?
+  notes         String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  createdBy     String?
+
+  @@map("payments")
+}
+
+model Task {
+  id            String       @id @default(uuid())
+  title         String
+  description   String?
+  clientId      String?
+  client        Client?      @relation(fields: [clientId], references: [id])
+  dealId        String?
+  deal          Deal?        @relation(fields: [dealId], references: [id])
+  projectId     String?
+  project       Project?     @relation(fields: [projectId], references: [id])
+  assignedToId  String?
+  assignedTo    User?        @relation("AssignedTasks", fields: [assignedToId], references: [id])
+  priority      TaskPriority @default(MEDIUM)
+  status        TaskStatus   @default(PENDING)
+  dueDate       DateTime?
+  completedDate DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  createdBy     String?
+
+  @@map("tasks")
+}
+
+model Followup {
+  id             String         @id @default(uuid())
+  clientId       String?
+  client         Client?        @relation(fields: [clientId], references: [id])
+  leadId         String?
+  lead           Lead?          @relation(fields: [leadId], references: [id])
+  dealId         String?
+  deal           Deal?          @relation(fields: [dealId], references: [id])
+  assignedToId   String?
+  assignedTo     User?          @relation("AssignedFollowups", fields: [assignedToId], references: [id])
+  followupDate   DateTime
+  followupType   FollowupType   @default(CALL)
+  status         FollowupStatus @default(SCHEDULED)
+  notes          String?
+  outcome        String?
+  nextFollowup   DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  createdBy      String?
+
+  @@map("followups")
+}
+
+// SECURITY COMPLIANT: NO PLAINTEXT PASSWORDS!
+// Maintains external credential references (Bitwarden, 1Password, etc.)
+model AccountRegistry {
+  id                  String          @id @default(uuid())
+  serviceName         String
+  category            AccountCategory @default(OTHER)
+  url                 String?
+  username            String?
+  owner               String?
+  twoFactorEnabled    Boolean         @default(false)
+  credentialManager   String          @default("Bitwarden") // Bitwarden, 1Password, Vaultwarden, KeePass, etc.
+  credentialReference String          // Path/Title in Vault, e.g. "AWS Production / parxcon-prod"
+  renewalDate         DateTime?
+  associatedClientId  String?
+  associatedClient    Client?         @relation(fields: [associatedClientId], references: [id])
+  notes               String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  createdBy           String?
+
+  @@map("account_registry")
+}
+
+model Renewal {
+  id           String    @id @default(uuid())
+  service      String
+  provider     String
+  renewalDate  DateTime
+  cost         Float
+  currency     String    @default("INR")
+  autoRenewal  Boolean   @default(false)
+  owner        String?
+  alertDays    Int[]     @default([30, 15, 7, 1])
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("renewals")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  userName   String   @default("System")
+  action     String   // CREATE, UPDATE, DELETE, PAYMENT, STATUS_CHANGE, AI_ACTION, AUTH
+  entityType String   // Lead, Deal, Client, Payment, Task, Followup, Account, System
+  entityId   String?
+  entityName String?
+  details    String   // Description or JSON diff
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@map("activity_logs")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, WARNING, SUCCESS, URGENT
+  target    String   @default("ALL")  // User ID or ALL
+  isRead    Boolean  @default(false)
+  channel   String   @default("SYSTEM") // SYSTEM, EMAIL, SLACK, WHATSAPP
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model AiConversation {
+  id        String      @id @default(uuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id])
+  title     String      @default("Ops Chat")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
+
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String         @id @default(uuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String         // user, assistant, system, tool
+  content        String
+  toolCalls      String?        // JSON of executed backend tools
+  toolResults    String?        // JSON of output from executed tools
+  createdAt      DateTime       @default(now())
+
+  @@map("ai_messages")
+}
+
+model Setting {
+  key         String   @id
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}

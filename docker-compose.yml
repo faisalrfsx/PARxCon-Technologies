@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # PARxCON Ops Web Application (Full-Stack Frontend + Backend Express)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: parxcon-ops-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://postgres:postgres_secure_pass_2026@postgres:5432/parxcon_ops?schema=public
+      - JWT_SECRET=parxcon-super-secure-production-jwt-secret-replace-me
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - APP_URL=https://ops.parxcon.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - parxcon_data:/app/data
+
+  # PostgreSQL Relational Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: parxcon-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_secure_pass_2026
+      POSTGRES_DB: parxcon_ops
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d parxcon_ops"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Automated PostgreSQL Backup Service (Runs pg_dump daily)
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:16-alpine
+    container_name: parxcon-postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=parxcon_ops
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres_secure_pass_2026
+      - SCHEDULE=@daily
+      - BACKUP_KEEP_DAYS=14
+      - BACKUP_KEEP_WEEKS=4
+      - BACKUP_KEEP_MONTHS=6
+      - HEALTHCHECK_PORT=8080
+
+volumes:
+  pgdata:
+  parxcon_data:

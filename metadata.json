@@ -1,0 +1,8 @@
+{
+  "name": "Remix PARxCON Ops",
+  "description": "Production-ready, self-hostable operational command center: Leads, Deals, Clients, Tasks, Payments, Account Registry, Renewals, and Ops AI Assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
